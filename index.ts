@@ -7,8 +7,7 @@ import selfsigned from "selfsigned";
 // Load environment variables from .env file
 dotenv.config();
 
-const TARGET_URL =
-  process.env.TARGET_URL || "https://andi.dev.maersk-digital.net";
+const TARGET_URL = process.env.TARGET_URL || "https://example.com";
 const LOCAL_PORT = parseInt(process.env.LOCAL_PORT || "3333", 10);
 const ENABLE_PROXY_SSL = process.env.ENABLE_PROXY_SSL === "true";
 
