@@ -22,6 +22,14 @@ const proxy = httpProxy.createProxyServer({
   },
 });
 
+proxy.on("error", function (err, req, res) {
+  console.log(err);
+});
+
+proxy.on("proxyReq", function (proxyReq, req, res, options) {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+});
+
 proxy.on("proxyRes", function (proxyRes, req, res) {
   if (req.method === "OPTIONS") {
     res.writeHead(204, {
