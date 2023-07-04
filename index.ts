@@ -1,7 +1,9 @@
 import dotenv from "dotenv";
+import fs from "fs";
 import http from "http";
 import httpProxy from "http-proxy";
 import https from "https";
+import jwt from "jsonwebtoken";
 import selfsigned from "selfsigned";
 
 // Load environment variables from .env file
@@ -10,6 +12,59 @@ dotenv.config();
 const TARGET_URL = process.env.TARGET_URL || "https://example.com";
 const LOCAL_PORT = parseInt(process.env.LOCAL_PORT || "3333", 10);
 const ENABLE_PROXY_SSL = process.env.ENABLE_PROXY_SSL === "true";
+const AUTHORIZATION_HEADER_FILE = process.env.AUTHORIZATION_HEADER_FILE || null;
+
+const getJwtExpiry = (token: string): Date => {
+  const expiryDate = new Date(0);
+  const decoded = jwt.decode(token, { complete: true });
+  if (!decoded) {
+    return expiryDate;
+  }
+  const expiryInSeconds = (decoded.payload as jwt.JwtPayload).exp || 0;
+  expiryDate.setUTCSeconds(expiryInSeconds);
+  return expiryDate;
+};
+
+// time based cache for authorization header
+let authorizationHeaderCache: string | null = null;
+let authorizationHeaderCacheExpiry: Date = new Date(0);
+
+const getAuthorizationHeader = (): string | null => {
+  // check if cache is valid
+  if (authorizationHeaderCache && authorizationHeaderCacheExpiry > new Date()) {
+    return authorizationHeaderCache;
+  }
+
+  if (!AUTHORIZATION_HEADER_FILE) {
+    return null;
+  }
+
+  // Read authorization header from file
+  // extract the header from line which is: `proxy_set_header Authorization "Bearer $token";`
+  const file: string = fs.readFileSync(AUTHORIZATION_HEADER_FILE, "utf8");
+  const lines = file.split("\n");
+  const line = lines.find((line) => line.includes("proxy_set_header"));
+  if (!line) {
+    return null;
+  }
+  const authorizationHeader = line.split('"')[1];
+  const token = authorizationHeader.split(" ")[1].trim();
+  if (!token) {
+    return null;
+  }
+
+  // check if token is expired
+  const expiryDate = getJwtExpiry(token);
+  if (expiryDate < new Date()) {
+    return null;
+  }
+
+  // update cache
+  authorizationHeaderCache = authorizationHeader;
+  authorizationHeaderCacheExpiry = expiryDate;
+
+  return authorizationHeader;
+};
 
 // Create a proxy server
 const proxy = httpProxy.createProxyServer({
@@ -28,6 +83,10 @@ proxy.on("error", function (err, req, res) {
 
 proxy.on("proxyReq", function (proxyReq, req, res, options) {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  const authorizationHeader = getAuthorizationHeader();
+  if (authorizationHeader) {
+    proxyReq.setHeader("Authorization", authorizationHeader);
+  }
 });
 
 proxy.on("proxyRes", function (proxyRes, req, res) {
