@@ -13,6 +13,7 @@ const TARGET_URL = process.env.TARGET_URL || "https://example.com";
 const LOCAL_PORT = parseInt(process.env.LOCAL_PORT || "3333", 10);
 const ENABLE_PROXY_SSL = process.env.ENABLE_PROXY_SSL === "true";
 const AUTHORIZATION_HEADER_FILE = process.env.AUTHORIZATION_HEADER_FILE || null;
+const DEBUG = process.env.DEBUG === "true";
 
 const getJwtExpiry = (token: string): Date => {
   const expiryDate = new Date(0);
@@ -83,6 +84,23 @@ proxy.on("error", function (err, req, res) {
 
 proxy.on("proxyReq", function (proxyReq, req, res, options) {
   console.log(`[${new Date().toISOString()}] ${req.method} ${req.url}`);
+  if (DEBUG) {
+    const contentType = proxyReq.getHeader("Content-Type");
+
+    if (contentType === "application/json") {
+      (async () => {
+        const chunks: any[] = [];
+        for await (const chunk of req) {
+          chunks.push(chunk);
+        }
+
+        const body = Buffer.concat(chunks).toString().trim();
+        if (body) {
+          console.log(body);
+        }
+      })();
+    }
+  }
   const authorizationHeader = getAuthorizationHeader();
   if (authorizationHeader) {
     proxyReq.setHeader("Authorization", authorizationHeader);
